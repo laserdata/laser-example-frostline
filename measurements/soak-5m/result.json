@@ -1,0 +1,763 @@
+{
+  "profile": "soak_5m",
+  "duration_seconds": 300,
+  "rate": 2000,
+  "workers_per_role": 4,
+  "nodelay": true,
+  "clock_ticks_per_second": 100,
+  "soft_stop": null,
+  "binary": "frostline-demo",
+  "valid": true,
+  "initial": {
+    "iggy": {
+      "pid": 3505466,
+      "cpu_ticks": 14,
+      "start_ticks": 23036224,
+      "rss_bytes": 397434880,
+      "lifetime_peak_rss_bytes": 397434880,
+      "pss_bytes": 393624576,
+      "cgroup_current_bytes": 28377423872,
+      "cgroup_max_bytes": null,
+      "cgroup_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 7705
+      }
+    },
+    "plane": {
+      "pid": 3505494,
+      "cpu_ticks": 5,
+      "start_ticks": 23036274,
+      "rss_bytes": 103686144,
+      "lifetime_peak_rss_bytes": 103686144,
+      "pss_bytes": 101240832,
+      "cgroup_current_bytes": 28379521024,
+      "cgroup_max_bytes": null,
+      "cgroup_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 7705
+      }
+    }
+  },
+  "elapsed_seconds": 305.2203520749754,
+  "exit_code": 0,
+  "observed_peak_rss_bytes": {
+    "iggy": 424304640,
+    "plane": 115515392,
+    "application": 19636224
+  },
+  "cpu_seconds": {
+    "iggy": 254.63,
+    "plane": 5.71,
+    "application": 76.24
+  },
+  "application_report": {
+    "run_id": "06dbc683",
+    "reproduce": {
+      "command": "cargo run --release -p frostline-demo -- finite",
+      "variables": [
+        [
+          "FROSTLINE_CODEC",
+          "json"
+        ],
+        [
+          "FROSTLINE_CATALOG",
+          "managed"
+        ],
+        [
+          "FROSTLINE_SEED",
+          "1312"
+        ],
+        [
+          "FROSTLINE_FLEET_SIZE",
+          "800"
+        ],
+        [
+          "FROSTLINE_PARTITIONS",
+          "4"
+        ],
+        [
+          "FROSTLINE_TOTAL_RECORDS",
+          "491843"
+        ],
+        [
+          "FROSTLINE_CHECKPOINT_RECORDS",
+          "2000"
+        ],
+        [
+          "FROSTLINE_CHANGE_PERCENT",
+          "80"
+        ],
+        [
+          "FROSTLINE_INCIDENT_ONSET_PER_MILLE",
+          "3"
+        ],
+        [
+          "FROSTLINE_INCIDENT_UPDATES",
+          "5..30"
+        ],
+        [
+          "FROSTLINE_DIAGNOSTICS_SAMPLES",
+          "32"
+        ],
+        [
+          "FROSTLINE_RATE_PER_SECOND",
+          "2000"
+        ],
+        [
+          "FROSTLINE_DURATION_SECONDS",
+          "300"
+        ],
+        [
+          "FROSTLINE_WORKERS_PER_ROLE",
+          "4"
+        ],
+        [
+          "FROSTLINE_LOCAL_GUARD",
+          "false"
+        ],
+        [
+          "FROSTLINE_SAMPLED_EVENTS_PER_ROLE_PER_SECOND",
+          "0"
+        ],
+        [
+          "FROSTLINE_OUTPUT_DIRECTORY",
+          "runs/soak-5m/application"
+        ]
+      ]
+    },
+    "settings": {
+      "mode": "live",
+      "catalog": "managed",
+      "codec": "json",
+      "seed": 1312,
+      "fleet_size": 800,
+      "partitions": 4,
+      "rate_per_second": 2000,
+      "total_records": 24000,
+      "duration": {
+        "secs": 300,
+        "nanos": 0
+      },
+      "checkpoint_records": 2000,
+      "change_percent": 80,
+      "incident_onset_per_mille": 3,
+      "incident_min_updates": 5,
+      "incident_max_updates": 30,
+      "diagnostics_samples": 32,
+      "batch_records": 100,
+      "batch_bytes": 262144,
+      "batch_linger": {
+        "secs": 0,
+        "nanos": 5000000
+      },
+      "publish_queue_records": 2000,
+      "poll_records": 100,
+      "reply_bytes": 1048576,
+      "idle_interval": {
+        "secs": 0,
+        "nanos": 100000000
+      },
+      "workers_per_role": 4,
+      "local_guard": false,
+      "max_pending_windows": 120,
+      "board_interval": {
+        "secs": 4,
+        "nanos": 0
+      },
+      "sampled_events_per_role_per_second": 0,
+      "changes_expiry": {
+        "secs": 3600,
+        "nanos": 0
+      },
+      "reports_expiry": {
+        "secs": 86400,
+        "nanos": 0
+      },
+      "drain_timeout": {
+        "secs": 30,
+        "nanos": 0
+      },
+      "readiness_timeout": {
+        "secs": 60,
+        "nanos": 0
+      },
+      "log_format": "pretty",
+      "output_directory": "runs/soak-5m/application",
+      "keep_run": false
+    },
+    "codec": "json",
+    "catalog": "managed",
+    "producer": {
+      "records": 491843,
+      "payload_bytes": 307740512,
+      "windows": 246,
+      "checkpoints": 984,
+      "requested_rate": 2000,
+      "achieved_rate": 1639.471133320434,
+      "elapsed_seconds": 300.001012524
+    },
+    "summary": {
+      "windows": 246,
+      "latest": 245,
+      "source_records": 491843,
+      "source_bytes": 307740512,
+      "checkpoint_bytes": 259557,
+      "subscriptions": [
+        {
+          "group": "food-safety",
+          "baseline": false,
+          "matches": 933,
+          "received_bytes": 622383,
+          "saved_bytes": 307118129,
+          "reduction": {
+            "kind": "value",
+            "fraction": 0.9979775720916458
+          },
+          "selectivity": {
+            "kind": "value",
+            "fraction": 0.0018969467899309332
+          },
+          "duplicates": 0
+        },
+        {
+          "group": "food-safety-current",
+          "baseline": false,
+          "matches": 14208,
+          "received_bytes": 9416501,
+          "saved_bytes": 298324011,
+          "reduction": {
+            "kind": "value",
+            "fraction": 0.9694011654858103
+          },
+          "selectivity": {
+            "kind": "value",
+            "fraction": 0.02888726687174566
+          },
+          "duplicates": 0
+        },
+        {
+          "group": "maintenance",
+          "baseline": false,
+          "matches": 4377,
+          "received_bytes": 2285915,
+          "saved_bytes": 305454597,
+          "reduction": {
+            "kind": "value",
+            "fraction": 0.9925719399595981
+          },
+          "selectivity": {
+            "kind": "value",
+            "fraction": 0.008899181242794957
+          },
+          "duplicates": 0
+        },
+        {
+          "group": "north-pharma",
+          "baseline": false,
+          "matches": 45643,
+          "received_bytes": 27874072,
+          "saved_bytes": 279866440,
+          "reduction": {
+            "kind": "value",
+            "fraction": 0.9094234560836761
+          },
+          "selectivity": {
+            "kind": "value",
+            "fraction": 0.09279993819165872
+          },
+          "duplicates": 0
+        }
+      ],
+      "filtered_received_bytes": 40198871,
+      "filtered_baseline_bytes": 1230962048,
+      "filtered_saved_bytes": 1190763177,
+      "filtered_reduction": {
+        "kind": "value",
+        "fraction": 0.9673435334051826
+      }
+    },
+    "readers": [
+      {
+        "group": "food-safety",
+        "baseline": false,
+        "worker": 1,
+        "summary": {
+          "receipts": 246,
+          "matches": 236,
+          "received_records": 236,
+          "received_bytes": 158096,
+          "duplicates": 0,
+          "fetch_latency": {
+            "fetches": 3463,
+            "p50_us": 494,
+            "p99_us": 917,
+            "p999_us": 1254,
+            "examined_per_fetch": 36,
+            "relative_error_ppm": 0
+          },
+          "connection_opening_latency": {
+            "fetches": 1,
+            "p50_us": 23157,
+            "p99_us": 23157,
+            "p999_us": 23157,
+            "examined_per_fetch": 11,
+            "relative_error_ppm": 0
+          },
+          "status": "212 unsafe updates handled, 24 refrigerated trucks retired, 109 trucks tracked"
+        }
+      },
+      {
+        "group": "food-safety",
+        "baseline": false,
+        "worker": 2,
+        "summary": {
+          "receipts": 246,
+          "matches": 244,
+          "received_records": 244,
+          "received_bytes": 161748,
+          "duplicates": 0,
+          "fetch_latency": {
+            "fetches": 3480,
+            "p50_us": 438,
+            "p99_us": 927,
+            "p999_us": 1458,
+            "examined_per_fetch": 34,
+            "relative_error_ppm": 0
+          },
+          "connection_opening_latency": {
+            "fetches": 1,
+            "p50_us": 66144,
+            "p99_us": 66144,
+            "p999_us": 66144,
+            "examined_per_fetch": 25,
+            "relative_error_ppm": 0
+          },
+          "status": "212 unsafe updates handled, 32 refrigerated trucks retired, 109 trucks tracked"
+        }
+      },
+      {
+        "group": "food-safety",
+        "baseline": false,
+        "worker": 3,
+        "summary": {
+          "receipts": 246,
+          "matches": 235,
+          "received_records": 235,
+          "received_bytes": 157783,
+          "duplicates": 0,
+          "fetch_latency": {
+            "fetches": 3458,
+            "p50_us": 519,
+            "p99_us": 2537,
+            "p999_us": 3931,
+            "examined_per_fetch": 36,
+            "relative_error_ppm": 0
+          },
+          "connection_opening_latency": {
+            "fetches": 1,
+            "p50_us": 43594,
+            "p99_us": 43594,
+            "p999_us": 43594,
+            "examined_per_fetch": 26,
+            "relative_error_ppm": 0
+          },
+          "status": "212 unsafe updates handled, 23 refrigerated trucks retired, 117 trucks tracked"
+        }
+      },
+      {
+        "group": "food-safety",
+        "baseline": false,
+        "worker": 4,
+        "summary": {
+          "receipts": 246,
+          "matches": 218,
+          "received_records": 218,
+          "received_bytes": 144756,
+          "duplicates": 0,
+          "fetch_latency": {
+            "fetches": 3452,
+            "p50_us": 465,
+            "p99_us": 899,
+            "p999_us": 1521,
+            "examined_per_fetch": 35,
+            "relative_error_ppm": 0
+          },
+          "connection_opening_latency": {
+            "fetches": 1,
+            "p50_us": 66083,
+            "p99_us": 66083,
+            "p999_us": 66083,
+            "examined_per_fetch": 22,
+            "relative_error_ppm": 0
+          },
+          "status": "189 unsafe updates handled, 29 refrigerated trucks retired, 105 trucks tracked"
+        }
+      },
+      {
+        "group": "food-safety-current",
+        "baseline": false,
+        "worker": 1,
+        "summary": {
+          "receipts": 246,
+          "matches": 3576,
+          "received_records": 3576,
+          "received_bytes": 2369297,
+          "duplicates": 0,
+          "fetch_latency": {
+            "fetches": 5107,
+            "p50_us": 309,
+            "p99_us": 739,
+            "p999_us": 1129,
+            "examined_per_fetch": 24,
+            "relative_error_ppm": 0
+          },
+          "connection_opening_latency": {
+            "fetches": 1,
+            "p50_us": 70290,
+            "p99_us": 70290,
+            "p999_us": 70290,
+            "examined_per_fetch": 35,
+            "relative_error_ppm": 0
+          },
+          "status": "3576 unsafe updates handled, 0 refrigerated trucks retired, 123 trucks tracked"
+        }
+      },
+      {
+        "group": "food-safety-current",
+        "baseline": false,
+        "worker": 2,
+        "summary": {
+          "receipts": 246,
+          "matches": 3783,
+          "received_records": 3783,
+          "received_bytes": 2507700,
+          "duplicates": 0,
+          "fetch_latency": {
+            "fetches": 5168,
+            "p50_us": 325,
+            "p99_us": 2006,
+            "p999_us": 3502,
+            "examined_per_fetch": 23,
+            "relative_error_ppm": 0
+          },
+          "connection_opening_latency": {
+            "fetches": 1,
+            "p50_us": 87541,
+            "p99_us": 87541,
+            "p999_us": 87541,
+            "examined_per_fetch": 34,
+            "relative_error_ppm": 0
+          },
+          "status": "3783 unsafe updates handled, 0 refrigerated trucks retired, 116 trucks tracked"
+        }
+      },
+      {
+        "group": "food-safety-current",
+        "baseline": false,
+        "worker": 3,
+        "summary": {
+          "receipts": 246,
+          "matches": 3600,
+          "received_records": 3600,
+          "received_bytes": 2385855,
+          "duplicates": 0,
+          "fetch_latency": {
+            "fetches": 5031,
+            "p50_us": 304,
+            "p99_us": 727,
+            "p999_us": 1078,
+            "examined_per_fetch": 24,
+            "relative_error_ppm": 0
+          },
+          "connection_opening_latency": {
+            "fetches": 1,
+            "p50_us": 66162,
+            "p99_us": 66162,
+            "p999_us": 66162,
+            "examined_per_fetch": 28,
+            "relative_error_ppm": 0
+          },
+          "status": "3600 unsafe updates handled, 0 refrigerated trucks retired, 126 trucks tracked"
+        }
+      },
+      {
+        "group": "food-safety-current",
+        "baseline": false,
+        "worker": 4,
+        "summary": {
+          "receipts": 246,
+          "matches": 3249,
+          "received_records": 3249,
+          "received_bytes": 2153649,
+          "duplicates": 0,
+          "fetch_latency": {
+            "fetches": 4988,
+            "p50_us": 312,
+            "p99_us": 726,
+            "p999_us": 1338,
+            "examined_per_fetch": 24,
+            "relative_error_ppm": 0
+          },
+          "connection_opening_latency": {
+            "fetches": 1,
+            "p50_us": 74417,
+            "p99_us": 74417,
+            "p999_us": 74417,
+            "examined_per_fetch": 27,
+            "relative_error_ppm": 0
+          },
+          "status": "3249 unsafe updates handled, 0 refrigerated trucks retired, 117 trucks tracked"
+        }
+      },
+      {
+        "group": "maintenance",
+        "baseline": false,
+        "worker": 1,
+        "summary": {
+          "receipts": 246,
+          "matches": 1132,
+          "received_records": 1132,
+          "received_bytes": 594039,
+          "duplicates": 0,
+          "fetch_latency": {
+            "fetches": 4113,
+            "p50_us": 272,
+            "p99_us": 1074,
+            "p999_us": 2405,
+            "examined_per_fetch": 30,
+            "relative_error_ppm": 0
+          },
+          "connection_opening_latency": {
+            "fetches": 1,
+            "p50_us": 91692,
+            "p99_us": 91692,
+            "p999_us": 91692,
+            "examined_per_fetch": 44,
+            "relative_error_ppm": 0
+          },
+          "status": "1132 faults handled, 123 trucks with an open fault"
+        }
+      },
+      {
+        "group": "maintenance",
+        "baseline": false,
+        "worker": 2,
+        "summary": {
+          "receipts": 246,
+          "matches": 1157,
+          "received_records": 1157,
+          "received_bytes": 598628,
+          "duplicates": 0,
+          "fetch_latency": {
+            "fetches": 4128,
+            "p50_us": 219,
+            "p99_us": 672,
+            "p999_us": 1142,
+            "examined_per_fetch": 29,
+            "relative_error_ppm": 0
+          },
+          "connection_opening_latency": {
+            "fetches": 1,
+            "p50_us": 78949,
+            "p99_us": 78949,
+            "p999_us": 78949,
+            "examined_per_fetch": 30,
+            "relative_error_ppm": 0
+          },
+          "status": "1157 faults handled, 116 trucks with an open fault"
+        }
+      },
+      {
+        "group": "maintenance",
+        "baseline": false,
+        "worker": 3,
+        "summary": {
+          "receipts": 246,
+          "matches": 1081,
+          "received_records": 1081,
+          "received_bytes": 567475,
+          "duplicates": 0,
+          "fetch_latency": {
+            "fetches": 4056,
+            "p50_us": 266,
+            "p99_us": 741,
+            "p999_us": 995,
+            "examined_per_fetch": 30,
+            "relative_error_ppm": 0
+          },
+          "connection_opening_latency": {
+            "fetches": 1,
+            "p50_us": 66164,
+            "p99_us": 66164,
+            "p999_us": 66164,
+            "examined_per_fetch": 28,
+            "relative_error_ppm": 0
+          },
+          "status": "1081 faults handled, 126 trucks with an open fault"
+        }
+      },
+      {
+        "group": "maintenance",
+        "baseline": false,
+        "worker": 4,
+        "summary": {
+          "receipts": 246,
+          "matches": 1007,
+          "received_records": 1007,
+          "received_bytes": 525773,
+          "duplicates": 0,
+          "fetch_latency": {
+            "fetches": 4021,
+            "p50_us": 222,
+            "p99_us": 655,
+            "p999_us": 881,
+            "examined_per_fetch": 30,
+            "relative_error_ppm": 0
+          },
+          "connection_opening_latency": {
+            "fetches": 1,
+            "p50_us": 65797,
+            "p99_us": 65797,
+            "p999_us": 65797,
+            "examined_per_fetch": 22,
+            "relative_error_ppm": 0
+          },
+          "status": "1007 faults handled, 117 trucks with an open fault"
+        }
+      },
+      {
+        "group": "north-pharma",
+        "baseline": false,
+        "worker": 1,
+        "summary": {
+          "receipts": 246,
+          "matches": 13771,
+          "received_records": 13771,
+          "received_bytes": 8472324,
+          "duplicates": 0,
+          "fetch_latency": {
+            "fetches": 5966,
+            "p50_us": 269,
+            "p99_us": 610,
+            "p999_us": 1026,
+            "examined_per_fetch": 20,
+            "relative_error_ppm": 0
+          },
+          "connection_opening_latency": {
+            "fetches": 1,
+            "p50_us": 65702,
+            "p99_us": 65702,
+            "p999_us": 65702,
+            "examined_per_fetch": 35,
+            "relative_error_ppm": 0
+          },
+          "status": "40 trucks seen, 3941 readings and 9830 changes received, counted over received records only"
+        }
+      },
+      {
+        "group": "north-pharma",
+        "baseline": false,
+        "worker": 2,
+        "summary": {
+          "receipts": 246,
+          "matches": 9854,
+          "received_records": 9854,
+          "received_bytes": 5966490,
+          "duplicates": 0,
+          "fetch_latency": {
+            "fetches": 5904,
+            "p50_us": 267,
+            "p99_us": 601,
+            "p999_us": 1079,
+            "examined_per_fetch": 20,
+            "relative_error_ppm": 0
+          },
+          "connection_opening_latency": {
+            "fetches": 1,
+            "p50_us": 78415,
+            "p99_us": 78415,
+            "p999_us": 78415,
+            "examined_per_fetch": 30,
+            "relative_error_ppm": 0
+          },
+          "status": "35 trucks seen, 3339 readings and 6515 changes received, counted over received records only"
+        }
+      },
+      {
+        "group": "north-pharma",
+        "baseline": false,
+        "worker": 3,
+        "summary": {
+          "receipts": 246,
+          "matches": 12804,
+          "received_records": 12804,
+          "received_bytes": 7874202,
+          "duplicates": 0,
+          "fetch_latency": {
+            "fetches": 5940,
+            "p50_us": 275,
+            "p99_us": 663,
+            "p999_us": 994,
+            "examined_per_fetch": 21,
+            "relative_error_ppm": 0
+          },
+          "connection_opening_latency": {
+            "fetches": 1,
+            "p50_us": 65774,
+            "p99_us": 65774,
+            "p999_us": 65774,
+            "examined_per_fetch": 28,
+            "relative_error_ppm": 0
+          },
+          "status": "39 trucks seen, 3843 readings and 8961 changes received, counted over received records only"
+        }
+      },
+      {
+        "group": "north-pharma",
+        "baseline": false,
+        "worker": 4,
+        "summary": {
+          "receipts": 246,
+          "matches": 9214,
+          "received_records": 9214,
+          "received_bytes": 5561056,
+          "duplicates": 0,
+          "fetch_latency": {
+            "fetches": 5853,
+            "p50_us": 269,
+            "p99_us": 576,
+            "p999_us": 1210,
+            "examined_per_fetch": 20,
+            "relative_error_ppm": 0
+          },
+          "connection_opening_latency": {
+            "fetches": 1,
+            "p50_us": 65255,
+            "p99_us": 65255,
+            "p999_us": 65255,
+            "examined_per_fetch": 22,
+            "relative_error_ppm": 0
+          },
+          "status": "32 trucks seen, 3084 readings and 6130 changes received, counted over received records only"
+        }
+      }
+    ],
+    "previews": [],
+    "revision_walkthrough": [],
+    "mixed_log": [],
+    "mixed_log_lines": [],
+    "expired_windows": 0,
+    "complete": true
+  },
+  "binary_version": "0.1.0"
+}

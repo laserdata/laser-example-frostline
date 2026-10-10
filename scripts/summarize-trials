@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+"""Render saved replay results and server timing bounds without rerunning a benchmark."""
+
+import argparse
+import json
+import math
+from pathlib import Path
+import re
+
+
+def counters(path):
+    result = {}
+    for line in path.read_text().splitlines():
+        if line and not line.startswith("#"):
+            name, value = line.rsplit(" ", 1)
+            result[name] = int(value)
+    return result
+
+
+def server_bounds(directory, metric):
+    buckets = {}
+    count = 0
+    for after in sorted(directory.glob("repetition-*/logs/filtered-memory.after.prom")):
+        before = counters(after.with_name("filtered-memory.before.prom"))
+        current = counters(after)
+        prefix = f"agdx_filter_{metric}_nanoseconds"
+        count += current.get(prefix + "_count", 0) - before.get(prefix + "_count", 0)
+        for key, value in current.items():
+            match = re.fullmatch(re.escape(prefix) + r'_bucket\{le="([^"}]+)"\}', key)
+            if match:
+                bound = float(match.group(1))
+                buckets[bound] = buckets.get(bound, 0) + value - before.get(key, 0)
+    if not count:
+        return None
+    result = {"samples": count}
+    for label, fraction in [("p50", 0.5), ("p99", 0.99), ("p999", 0.999)]:
+        lower = 0
+        for upper, value in sorted(buckets.items()):
+            if value >= math.ceil(count * fraction):
+                result[label] = {"lower_ms": lower / 1e6, "upper_ms": upper / 1e6}
+                break
+            lower = upper
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("trials", type=Path, nargs="+")
+    parser.add_argument("--out", type=Path, required=True)
+    args = parser.parse_args()
+    rows = []
+    lines = ["# Measured replay comparisons", "", "Client values are medians of per-repetition percentiles. Server values are pooled fixed-bucket bounds from the filtered handler and classification chunks. Raw server cost uses phase CPU and RSS/PSS. It has no added handler timer. All values describe these local runs.", "",
+             "| Trial | Filtered server CPU s | Raw server CPU s | Filtered wall s | Raw wall s | Filtered peak RSS MiB | Raw peak RSS MiB |", "| --- | ---: | ---: | ---: | ---: | ---: | ---: |"]
+    details = []
+    for trial in args.trials:
+        state = json.loads((trial / "trial.json").read_text())
+        if state.get("status") != "passed":
+            raise SystemExit(f"{trial} did not pass")
+        directory = trial / "measurements"
+        result = json.loads((directory / "result.json").read_text())
+        costs = result["throughput"]
+        lines.append(f"| {trial.name} | {costs['filtered_server_cpu_seconds']:.3f} | {costs['full_feed_server_cpu_seconds']:.3f} | {costs['filtered_wall_seconds']:.3f} | {costs['full_feed_wall_seconds']:.3f} | {costs['filtered_server_peak_rss_bytes']/2**20:.1f} | {costs['full_feed_server_peak_rss_bytes']/2**20:.1f} |")
+        row = {"trial": trial.name, "settings": state, "result": result,
+               "server_request_bounds": server_bounds(directory, "request"),
+               "server_chunk_bounds": server_bounds(directory, "evaluation_chunk")}
+        rows.append(row)
+        details += ["", f"## {trial.name}", "", "| Role | Filtered p50 ms | p99 ms | p99.9 ms | Maximum ms | Calls | Examined/call | Raw p50 ms | p99 ms | p99.9 ms | Maximum ms | Calls | Records/call |", "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
+        for group in result["groups"]:
+            cells = [group["group"]]
+            for key in ["fetch_latency", "full_feed_fetch_latency"]:
+                latency = group[key]
+                cells += [f"{latency[p]/1000:.3f}" for p in ["p50_us", "p99_us", "p999_us", "max_us"]]
+                cells += [str(latency["fetches"]), str(latency["examined_per_fetch"])]
+            details.append("| " + " | ".join(cells) + " |")
+        for title, key in [("Server filtered handler", "server_request_bounds"), ("Server evaluation chunk", "server_chunk_bounds")]:
+            histogram = row[key]
+            if histogram:
+                values = [f"{histogram[p]['lower_ms']:.3f} to {histogram[p]['upper_ms']:.3f}" for p in ["p50", "p99", "p999"]]
+                details += ["", f"{title} p50/p99/p99.9 bounds in milliseconds: {' / '.join(values)}. Samples: {histogram['samples']}."]
+        details += ["", f"Source artifacts: `{trial}`. TCP nodelay: `{state.get('nodelay')}`. Scan cap: {state.get('scan_records')}. Owner-read cap: {state.get('round_records')}."]
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text("\n".join(lines + details) + "\n")
+    args.out.with_suffix(".json").write_text(json.dumps(rows, indent=2) + "\n")
+
+
+if __name__ == "__main__":
+    main()

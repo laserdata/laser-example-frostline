@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package frostline;
+
+message FleetEvent {
+  uint32 v = 1;
+  string run_id = 2;
+  uint64 event_id = 3;
+  uint64 window_id = 4;
+  uint64 sequence = 5;
+  uint64 logical_time_micros = 6;
+  optional string truck_id = 7;
+  optional string region = 8;
+  optional string cargo = 9;
+  string kind = 10;
+  optional Change change = 11;
+  optional Telemetry telemetry = 12;
+  optional Checkpoint checkpoint = 13;
+}
+
+message Change {
+  string op = 1;
+  optional TruckState before = 2;
+  optional TruckState after = 3;
+  repeated string changed = 4;
+}
+
+message TruckState {
+  string temperature_band = 1;
+  sint32 temperature_deci_c = 2;
+  uint32 battery_pct = 3;
+  string unit_state = 4;
+  string trip_status = 5;
+  string region = 6;
+  string cargo = 7;
+  string declared_weight_tonnes = 8;
+}
+
+message Telemetry {
+  sint32 temperature_deci_c = 1;
+  uint32 battery_pct = 2;
+  string unit_state = 3;
+  optional uint32 fault_code = 4;
+  sint32 latitude_e6 = 5;
+  sint32 longitude_e6 = 6;
+  repeated sint32 samples = 7;
+}
+
+message Checkpoint {
+  uint64 window_id = 1;
+  uint32 partition_id = 2;
+  bool last = 3;
+}

@@ -1,0 +1,38 @@
+[package]
+name = "frostline-shared"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[features]
+integration = ["testkit"]
+testkit = ["dep:tempfile"]
+
+[dependencies]
+ciborium = { workspace = true }
+laser-sdk = { workspace = true }
+prost = { workspace = true }
+rand.workspace = true
+secrecy = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+strum = { workspace = true }
+tempfile = { workspace = true, optional = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[dev-dependencies]
+apache-avro = { workspace = true }
+protox = { workspace = true }
+rand = { workspace = true }
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"
+required-features = ["integration"]

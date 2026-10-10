@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# Start or stop iggy-server and plane as native processes under runs/stack.
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+state="${FROSTLINE_STACK_DIR:-$root/runs/stack}"
+tcp_port="${FROSTLINE_TCP_PORT:-8090}"
+http_port="${FROSTLINE_HTTP_PORT:-3000}"
+health_port="${FROSTLINE_HEALTH_PORT:-8089}"
+socket_path="${FROSTLINE_PLANE_SOCKET:-$state/plane.sock}"
+pids="$state/pids.json"
+username="${FROSTLINE_IGGY_USERNAME:-iggy}"
+password="${FROSTLINE_IGGY_PASSWORD:-laser}"
+
+start() {
+  mkdir -p "$state/iggy" "$state/plane"
+  if [[ -f "$pids" ]]; then
+    echo "the local runtime is already running, see $pids" >&2
+    exit 1
+  fi
+  iggy="$("$root/scripts/resolve-runtime" iggy-server)"
+  plane="$("$root/scripts/resolve-runtime" plane)"
+  echo "iggy-server: $iggy"
+  echo "plane: $plane"
+  LD_PRELOAD="${FROSTLINE_IGGY_LD_PRELOAD:-}" DUMP_HEAPTRACK_OUTPUT="${FROSTLINE_HEAPTRACK_OUTPUT:-}" \
+    IGGY_ROOT_USERNAME="$username" IGGY_ROOT_PASSWORD="$password" \
+    IGGY_PATH="$state/iggy" IGGY_TCP_ADDRESS="127.0.0.1:$tcp_port" IGGY_HTTP_ADDRESS="127.0.0.1:$http_port" \
+    IGGY_QUIC_ENABLED=false IGGY_WEBSOCKET_ENABLED=false \
+    IGGY_PLANE_ENABLED=true IGGY_PLANE_SOCKET_PATH="$socket_path" IGGY_PLANE_REQUEST_TIMEOUT=15s \
+    IGGY_PLANE_FILTERS_MAX_ROUND_RECORDS="${FROSTLINE_ROUND_RECORDS:-1000}" \
+    IGGY_PLANE_FILTERS_MAX_EXAMINED_RECORDS="${FROSTLINE_SCAN_RECORDS:-1000}" \
+    IGGY_PLANE_FILTERS_MAX_CONCURRENT="${FROSTLINE_FILTERS_MAX_CONCURRENT:-16}" \
+    "$iggy" > "$state/iggy.log" 2>&1 &
+  iggy_pid=$!
+  for _ in $(seq 1 60); do
+    (exec 3<>/dev/tcp/127.0.0.1/"$tcp_port") 2>/dev/null && break
+    kill -0 "$iggy_pid" 2>/dev/null || { echo "iggy-server exited, see $state/iggy.log" >&2; wait "$iggy_pid" || true; exit 1; }
+    sleep 0.5
+  done
+  if ! (exec 3<>/dev/tcp/127.0.0.1/"$tcp_port") 2>/dev/null; then
+    kill "$iggy_pid" 2>/dev/null || true
+    wait "$iggy_pid" || true
+    echo "iggy-server did not bind its TCP endpoint, see $state/iggy.log" >&2
+    exit 1
+  fi
+  LD_PLANE_IGGY_URL="tcp://127.0.0.1:$tcp_port" LD_PLANE_IGGY_HTTP_URL="http://127.0.0.1:$http_port" \
+    LD_PLANE_IGGY_USERNAME="$username" LD_PLANE_IGGY_PASSWORD="$password" LD_PLANE_IGGY_TLS_DISABLED=true \
+    LD_PLANE_IGGY_PAT_FILE=/nonexistent/plane.pat LD_PLANE_QUERY_SOCKET="$socket_path" \
+    LD_PLANE_DB_PATH="$state/plane/index.db" LD_PLANE_HEALTH_ADDR="127.0.0.1:$health_port" \
+    LD_PLANE_INTERNAL_API_TOKEN=frostline-local \
+    "$plane" > "$state/plane.log" 2>&1 &
+  plane_pid=$!
+  printf '{"iggy": %s, "plane": %s}\n' "$iggy_pid" "$plane_pid" > "$pids"
+  ready=false
+  for _ in $(seq 1 120); do
+    FROSTLINE_IGGY_USERNAME="$username" FROSTLINE_IGGY_PASSWORD="$password" python3 "$root/scripts/runtime-ready" "http://127.0.0.1:$http_port" "http://127.0.0.1:$health_port/ready" && { ready=true; break; }
+    kill -0 "$plane_pid" 2>/dev/null || { echo "plane exited, see $state/plane.log" >&2; stop; exit 1; }
+    sleep 0.5
+  done
+  if [[ "$ready" != true ]]; then
+    echo "managed runtime capability checks did not pass within 60 s, see $state/plane.log" >&2
+    stop
+    exit 1
+  fi
+  echo "started iggy-server $iggy_pid and plane $plane_pid, logs in $state"
+  echo "local TCP endpoint: 127.0.0.1:$tcp_port, use the configured local credentials"
+}
+
+stop() {
+  if [[ ! -f "$pids" ]]; then
+    echo "the local runtime is not running"
+    return
+  fi
+  running=$(python3 - "$pids" "$state" <<'PYCHECK'
+import json,os,sys
+from pathlib import Path
+state=Path(sys.argv[2]).resolve()
+for name,pid in json.loads(Path(sys.argv[1]).read_text()).items():
+    if name not in ('iggy','plane') or not isinstance(pid,int) or pid <= 1:
+        raise SystemExit('invalid runtime pid file')
+    try:
+        env=dict(item.split(b'=',1) for item in Path(f'/proc/{pid}/environ').read_bytes().split(b'\0') if b'=' in item)
+    except FileNotFoundError:
+        continue
+    key=b'IGGY_PATH' if name=='iggy' else b'LD_PLANE_DB_PATH'
+    expected=state/'iggy' if name=='iggy' else state/'plane/index.db'
+    if Path(os.fsdecode(env.get(key,b''))).resolve() != expected:
+        raise SystemExit(f'refusing unrelated runtime pid {pid}')
+    print(pid)
+PYCHECK
+  )
+  for pid in $running; do
+    kill "$pid" 2>/dev/null || true
+  done
+  for pid in $running; do
+    for _ in $(seq 1 40); do
+      kill -0 "$pid" 2>/dev/null || break
+      sleep 0.25
+    done
+    kill -9 "$pid" 2>/dev/null || true
+  done
+  rm -f "$pids"
+  echo "stopped the local runtime, data kept in $state"
+}
+
+case "${1:-}" in
+  start) start ;;
+  stop) stop ;;
+  *) echo "usage: stack-local <start|stop>" >&2; exit 2 ;;
+esac

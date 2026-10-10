@@ -1,0 +1,153 @@
+#!/usr/bin/env python3
+"""Run a replay benchmark against its own source-built native runtime."""
+
+import argparse
+import json
+import os
+import platform
+import re
+import shutil
+from pathlib import Path
+import socket
+import subprocess
+import tempfile
+import time
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def port():
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        return listener.getsockname()[1]
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("profile")
+    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--round-records", type=int, default=1000)
+    parser.add_argument("--scan-records", type=int, default=1000)
+    parser.add_argument("--poll-records", type=int, default=1000)
+    parser.add_argument("--nodelay", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--heaptrack", action="store_true")
+    parser.add_argument("--matrix", action="store_true")
+    parser.add_argument("--binary", type=Path, default=ROOT / "target/release/frostline-bench")
+    args = parser.parse_args()
+    if not 1 <= args.round_records <= 1000:
+        parser.error("round-records must be 1 through 1000")
+    if not 1 <= args.poll_records <= 1000:
+        parser.error("poll-records must be 1 through 1000")
+    if args.scan_records <= 0 or not args.binary.is_file():
+        parser.error("scan-records must be positive and the benchmark binary must exist")
+    directory = args.out.resolve()
+    directory.mkdir(parents=True, exist_ok=False)
+    allowed = {"FROSTLINE_IGGY_SERVER", "FROSTLINE_PLANE", "FROSTLINE_IGGY_USERNAME", "FROSTLINE_IGGY_PASSWORD", "FROSTLINE_PROFILE_CPU"}
+    env = {key: value for key, value in os.environ.items() if not key.startswith("FROSTLINE_") or key in allowed}
+    tcp, http, health = port(), port(), port()
+    env.update(FROSTLINE_STACK_DIR=str(directory / "stack"),
+               FROSTLINE_TCP_PORT=str(tcp), FROSTLINE_HTTP_PORT=str(http),
+               FROSTLINE_HEALTH_PORT=str(health),
+               FROSTLINE_SCAN_RECORDS=str(args.scan_records),
+               FROSTLINE_ROUND_RECORDS=str(args.round_records),
+               FROSTLINE_RUNTIME_PIDS=str(directory / "stack/pids.json"))
+    username = env.get("FROSTLINE_IGGY_USERNAME", "iggy")
+    password = env.get("FROSTLINE_IGGY_PASSWORD", "laser")
+    env["LASER_CONNECTION_STRING"] = f"{username}:{password}@127.0.0.1:{tcp}?nodelay={str(args.nodelay).lower()}"
+    cpu = next((line.split(":", 1)[1].strip() for line in Path("/proc/cpuinfo").read_text().splitlines() if line.startswith("model name")), "unknown")
+    memory = next(line for line in Path("/proc/meminfo").read_text().splitlines() if line.startswith("MemTotal:"))
+    environment = {"system": platform.system(), "kernel": platform.release(), "architecture": platform.machine(),
+                   "cpu": cpu, "cpu_affinity": sorted(os.sched_getaffinity(0)), "memory": memory,
+                   "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                   "scope": "local loopback, existing host services remain, no overlapping benchmark or build permitted for latency claims"}
+    (directory / "environment.json").write_text(json.dumps(environment, indent=2) + "\n")
+    runner = ROOT / "scripts/stack-local"
+    outcome = {"profile": args.profile, "scan_records": args.scan_records, "poll_records": args.poll_records, "round_records": args.round_records, "heaptrack": args.heaptrack, "nodelay": args.nodelay, "matrix": args.matrix, "status": "failed"}
+    heap = None
+    heap_log = None
+    if args.heaptrack:
+        script = Path(shutil.which("heaptrack") or "/nonexistent")
+        if not script.is_file():
+            parser.error("heaptrack is not installed")
+        installation = script.read_text()
+        def installed(name):
+            match = re.search(r'^' + name + r'="([^"\n]+)"', installation, re.MULTILINE)
+            if match is None:
+                raise RuntimeError("the installed heaptrack launcher does not expose its library paths")
+            return (script.parent / match.group(1)).resolve()
+        preload = installed("LIB_REL_PATH") / "libheaptrack_preload.so"
+        interpreter = installed("LIBEXEC_REL_PATH") / "heaptrack_interpret"
+        if not preload.is_file() or not interpreter.is_file():
+            parser.error("the installed heaptrack library or interpreter is missing")
+        fifo = directory / "heaptrack.fifo"
+        os.mkfifo(fifo)
+        heap_log = (directory / "heaptrack.log").open("w")
+        heap = subprocess.Popen(["bash", "-o", "pipefail", "-c",
+            '"$1" < "$2" | gzip -c > "$3"', "heaptrack", str(interpreter), str(fifo),
+            str(directory / "heaptrack.gz")], stdout=heap_log, stderr=subprocess.STDOUT)
+        env["FROSTLINE_IGGY_LD_PRELOAD"] = str(preload)
+        env["FROSTLINE_HEAPTRACK_OUTPUT"] = str(fifo)
+    with tempfile.TemporaryDirectory(prefix="frostline-replay-") as sockets:
+        env["FROSTLINE_PLANE_SOCKET"] = str(Path(sockets) / "plane.sock")
+        try:
+            with (directory / "startup.log").open("w") as startup:
+                subprocess.run([str(runner), "start"], cwd=ROOT, env=env, stdout=startup,
+                               stderr=subprocess.STDOUT, check=True, timeout=100)
+            if args.heaptrack:
+                broker_log = (directory / "stack/iggy.log").read_text()
+                if "Using the default system allocator" not in broker_log:
+                    raise RuntimeError("heap profiling requires the existing disable-mimalloc build")
+            command = [str(args.binary.resolve()), "bench", args.profile, "--out", str(directory / "measurements")]
+            if args.poll_records != 1000:
+                command.extend(["--poll-records", str(args.poll_records)])
+            if args.profile == "selectivity":
+                command = [str(args.binary.resolve()), "selectivity", "--out", str(directory / "measurements")]
+                if args.matrix:
+                    command.append("--matrix")
+            with (directory / "benchmark.log").open("w") as log:
+                result = subprocess.run(command, cwd=ROOT, env=env, stdout=log,
+                                        stderr=subprocess.STDOUT, timeout=7200)
+            outcome["exit_code"] = result.returncode
+            outcome["status"] = "passed" if result.returncode == 0 else "failed"
+        except Exception as error:
+            outcome["error"] = str(error)
+        finally:
+            try:
+                stopped = subprocess.run([str(runner), "stop"], cwd=ROOT, env=env, capture_output=True, timeout=40)
+                if stopped.returncode != 0:
+                    outcome["status"] = "failed"
+                    outcome["cleanup_error"] = stopped.stderr.decode(errors="replace")
+            except Exception as error:
+                outcome["status"] = "failed"
+                outcome["cleanup_error"] = str(error)
+            if heap is not None:
+                try:
+                    exit_code = heap.wait(timeout=30)
+                    captures = list(directory.glob("heaptrack*.gz"))
+                    if exit_code != 0 or len(captures) != 1:
+                        raise RuntimeError("heaptrack did not finish with exactly one capture")
+                    subprocess.run(["gzip", "--test", str(captures[0])], check=True, capture_output=True)
+                    with (directory / "heaptrack-report.txt").open("w") as report:
+                        subprocess.run(["heaptrack_print", "-f", str(captures[0])], stdout=report,
+                                       stderr=subprocess.STDOUT, check=True, timeout=120)
+                    outcome["heap_capture"] = str(captures[0])
+                except Exception as error:
+                    outcome["status"] = "failed"
+                    outcome["heap_error"] = str(error)
+                    if heap.poll() is None:
+                        heap.terminate()
+                        try:
+                            heap.wait(timeout=10)
+                        except subprocess.TimeoutExpired:
+                            heap.kill()
+                            heap.wait()
+                finally:
+                    heap_log.close()
+                    (directory / "heaptrack.fifo").unlink(missing_ok=True)
+            (directory / "trial.json").write_text(json.dumps(outcome, indent=2) + "\n")
+    print(json.dumps({"status": outcome["status"], "artifact": str(directory)}), flush=True)
+    raise SystemExit(0 if outcome["status"] == "passed" else 1)
+
+
+if __name__ == "__main__":
+    main()

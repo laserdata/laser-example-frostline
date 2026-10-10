@@ -1,0 +1,8 @@
+/target
+/runs
+**/*.rs.bk
+.env
+.idea/
+.vscode/
+.claude/settings.local.json
+__pycache__/

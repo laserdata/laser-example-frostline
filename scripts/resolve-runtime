@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Print the path of the iggy-server or plane binary the local runtime uses.
+set -euo pipefail
+
+binary="${1:?usage: resolve-runtime <iggy-server|plane>}"
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+workspace="$(dirname "$root")"
+
+case "$binary" in
+  iggy-server)
+    override_name="FROSTLINE_IGGY_SERVER"
+    override="${FROSTLINE_IGGY_SERVER:-}"
+    sibling="$workspace/iggy/target"
+    ;;
+  plane)
+    override_name="FROSTLINE_PLANE"
+    override="${FROSTLINE_PLANE:-}"
+    # Any sibling checkout that built a plane binary.
+    sibling=""
+    for candidate in "$workspace"/*/target; do
+      for profile in release debug; do
+        if [[ -x "$candidate/$profile/plane" ]]; then
+          sibling="$candidate"
+          break 2
+        fi
+      done
+    done
+    ;;
+  *)
+    echo "unknown runtime binary: $binary" >&2
+    exit 2
+    ;;
+esac
+
+if [[ -n "$override" ]]; then
+  [[ -x "$override" ]] || { echo "$override is not executable" >&2; exit 1; }
+  echo "$override"
+  exit 0
+fi
+
+if [[ -n "$sibling" ]]; then
+  for profile in release debug; do
+    if [[ -x "$sibling/$profile/$binary" ]]; then
+      echo "$sibling/$profile/$binary"
+      exit 0
+    fi
+  done
+fi
+
+echo "no local $binary found in a sibling checkout under $workspace, supply a compatible binary with $override_name" >&2
+exit 1
