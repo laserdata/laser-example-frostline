@@ -1,0 +1,78 @@
+{
+  "type": "record",
+  "name": "FleetEvent",
+  "namespace": "frostline",
+  "fields": [
+    { "name": "v", "type": "int" },
+    { "name": "run_id", "type": "string" },
+    { "name": "event_id", "type": "long" },
+    { "name": "window_id", "type": "long" },
+    { "name": "sequence", "type": "long" },
+    { "name": "logical_time_micros", "type": "long" },
+    { "name": "truck_id", "type": ["null", "string"], "default": null },
+    { "name": "region", "type": ["null", "string"], "default": null },
+    { "name": "cargo", "type": ["null", "string"], "default": null },
+    { "name": "kind", "type": "string" },
+    {
+      "name": "change",
+      "default": null,
+      "type": ["null", {
+        "type": "record",
+        "name": "Change",
+        "fields": [
+          { "name": "op", "type": "string" },
+          {
+            "name": "before",
+            "default": null,
+            "type": ["null", {
+              "type": "record",
+              "name": "TruckState",
+              "fields": [
+                { "name": "temperature_band", "type": "string" },
+                { "name": "temperature_deci_c", "type": "int" },
+                { "name": "battery_pct", "type": "int" },
+                { "name": "unit_state", "type": "string" },
+                { "name": "trip_status", "type": "string" },
+                { "name": "region", "type": "string" },
+                { "name": "cargo", "type": "string" },
+                { "name": "declared_weight_tonnes", "type": "string" }
+              ]
+            }]
+          },
+          { "name": "after", "type": ["null", "TruckState"], "default": null },
+          { "name": "changed", "type": { "type": "array", "items": "string" } }
+        ]
+      }]
+    },
+    {
+      "name": "telemetry",
+      "default": null,
+      "type": ["null", {
+        "type": "record",
+        "name": "Telemetry",
+        "fields": [
+          { "name": "temperature_deci_c", "type": "int" },
+          { "name": "battery_pct", "type": "int" },
+          { "name": "unit_state", "type": "string" },
+          { "name": "fault_code", "type": ["null", "int"], "default": null },
+          { "name": "latitude_e6", "type": "int" },
+          { "name": "longitude_e6", "type": "int" },
+          { "name": "samples", "type": { "type": "array", "items": "int" } }
+        ]
+      }]
+    },
+    {
+      "name": "checkpoint",
+      "default": null,
+      "type": ["null", {
+        "type": "record",
+        "name": "Checkpoint",
+        "fields": [
+          { "name": "window_id", "type": "long" },
+          { "name": "partition_id", "type": "long" },
+          { "name": "last", "type": "boolean" }
+        ]
+      }]
+    }
+  ]
+}

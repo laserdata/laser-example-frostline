@@ -1,0 +1,27 @@
+#!/usr/bin/env python3
+"""Save protected filter metrics without including credentials in the artifact."""
+
+import importlib.machinery
+import importlib.util
+import os
+from pathlib import Path
+import sys
+
+loader = importlib.machinery.SourceFileLoader("runtime_ready", str(Path(__file__).with_name("runtime-ready")))
+spec = importlib.util.spec_from_loader(loader.name, loader)
+runtime = importlib.util.module_from_spec(spec)
+loader.exec_module(runtime)
+http = "http://127.0.0.1:" + os.environ["FROSTLINE_HTTP_PORT"]
+login = runtime.request(http + "/users/login", {
+    "username": os.environ.get("FROSTLINE_IGGY_USERNAME", "iggy"),
+    "password": os.environ.get("FROSTLINE_IGGY_PASSWORD", "laser"),
+})
+access = login.get("access_token", login.get("token"))
+token = access.get("token") if isinstance(access, dict) else access
+if not isinstance(token, str):
+    raise SystemExit("the metrics login returned no token")
+try:
+    metrics = runtime.request(http + "/agdx/filters/metrics", token=token, raw=True)
+    Path(sys.argv[1]).write_text(metrics)
+finally:
+    runtime.request(http + "/users/logout", token=token, method="DELETE")

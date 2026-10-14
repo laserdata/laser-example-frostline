@@ -1,0 +1,93 @@
+name: ci
+
+# The integration and end to end jobs need a LaserData Iggy server and plane
+# that serve consumer filters. They run only when the repository variable
+# FROSTLINE_INTEGRATION is "true" and the two binaries are supplied through
+# FROSTLINE_IGGY_SERVER and FROSTLINE_PLANE, so a stale published artifact
+# can never stand in for the build under test.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: laser-example-frostline
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: laser-example-frostline
+          persist-credentials: false
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: 1.98.0
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2.9.1
+        with:
+          workspaces: laser-example-frostline
+      - run: cargo install cargo-sort@2.1.1 cargo-machete@0.9.1 --locked
+      - run: cargo fmt --all -- --check
+      - run: cargo sort --workspace --check
+      - run: cargo machete --with-metadata
+      - run: scripts/max-lines 300
+      - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: laser-example-frostline
+          persist-credentials: false
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: 1.98.0
+      - uses: Swatinem/rust-cache@v2.9.1
+        with:
+          workspaces: laser-example-frostline
+      - run: cargo test --locked --workspace
+      - run: python3 -m unittest discover -s scripts/tests
+      - run: cargo test --locked --workspace --all-features --doc
+
+  integration:
+    if: vars.FROSTLINE_INTEGRATION == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 40
+    env:
+      FROSTLINE_IGGY_SERVER: ${{ vars.FROSTLINE_IGGY_SERVER }}
+      FROSTLINE_PLANE: ${{ vars.FROSTLINE_PLANE }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: laser-example-frostline
+          persist-credentials: false
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: 1.98.0
+      - uses: Swatinem/rust-cache@v2.9.1
+        with:
+          workspaces: laser-example-frostline
+      - run: test -x "$FROSTLINE_IGGY_SERVER" && test -x "$FROSTLINE_PLANE"
+      - run: cargo test --locked -p frostline-shared --features integration
+      - run: cargo test --locked -p frostline-producer --features integration
+      - run: cargo test --locked -p frostline-consumers --features integration
+      - run: cargo test --locked -p frostline-demo --features e2e

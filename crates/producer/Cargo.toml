@@ -1,0 +1,28 @@
+[package]
+name = "frostline-producer"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[features]
+integration = []
+
+[dependencies]
+frostline-shared = { workspace = true }
+laser-sdk = { workspace = true }
+rand = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+frostline-shared = { workspace = true, features = ["testkit"] }
+tokio = { workspace = true, features = ["test-util"] }
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"
+required-features = ["integration"]

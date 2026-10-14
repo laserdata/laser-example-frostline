@@ -1,0 +1,199 @@
+#!/usr/bin/env python3
+"""Run an isolated native stack and retain streaming resource evidence."""
+
+import argparse
+import json
+import os
+from pathlib import Path
+import signal
+import socket
+import subprocess
+import time
+import tempfile
+
+ROOT = Path(__file__).resolve().parents[1]
+SECONDS = {"soak_5m": 300, "soak_60m": 3600, "pressure": 300}
+
+
+def port():
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        return listener.getsockname()[1]
+
+
+def sample(pid):
+    base = Path(f"/proc/{pid}")
+    stat = (base / "stat").read_text().rsplit(")", 1)[1].split()
+    status = {}
+    for line in (base / "status").read_text().splitlines():
+        key, _, value = line.partition(":")
+        if value.strip().endswith("kB"):
+            status[key] = int(value.split()[0]) * 1024
+    result = {"pid": pid, "cpu_ticks": int(stat[11]) + int(stat[12]),
+              "start_ticks": int(stat[19]), "rss_bytes": status.get("VmRSS", 0),
+              "lifetime_peak_rss_bytes": status.get("VmHWM", 0)}
+    try:
+        for line in (base / "smaps_rollup").read_text().splitlines():
+            if line.startswith("Pss:"):
+                result["pss_bytes"] = int(line.split()[1]) * 1024
+        membership = next(line[3:] for line in (base / "cgroup").read_text().splitlines()
+                          if line.startswith("0::"))
+        cgroup = Path("/sys/fs/cgroup") / membership.lstrip("/")
+        result["cgroup_current_bytes"] = int((cgroup / "memory.current").read_text())
+        maximum = (cgroup / "memory.max").read_text().strip()
+        result["cgroup_max_bytes"] = None if maximum == "max" else int(maximum)
+        result["cgroup_events"] = {
+            key: int(value) for key, value in
+            (line.split() for line in (cgroup / "memory.events").read_text().splitlines())
+        }
+    except (OSError, StopIteration):
+        pass
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("profile", choices=SECONDS)
+    parser.add_argument("--seconds", type=int)
+    parser.add_argument("--rate", type=int, default=2000)
+    parser.add_argument("--workers", type=int, choices=[1, 2, 4], default=1)
+    parser.add_argument("--binary", type=Path, default=ROOT / "target/release/frostline-demo")
+    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--soft-percent", type=float, default=85)
+    parser.add_argument("--soft-bytes", type=int)
+    args = parser.parse_args()
+    duration = SECONDS[args.profile] if args.seconds is None else args.seconds
+    if duration <= 0 or duration > 86400:
+        parser.error("duration must be 1 through 86400 seconds")
+    if args.rate <= 0:
+        parser.error("rate must be positive")
+    if args.soft_bytes is not None and args.soft_bytes <= 0:
+        parser.error("soft-bytes must be positive")
+    if not 0 < args.soft_percent < 100:
+        parser.error("soft-percent must be between 0 and 100")
+    if not args.binary.is_file():
+        parser.error("the application binary does not exist, build it first")
+    directory = args.out.resolve()
+    directory.mkdir(parents=True, exist_ok=False)
+    allowed = {"FROSTLINE_IGGY_SERVER", "FROSTLINE_PLANE", "FROSTLINE_IGGY_USERNAME", "FROSTLINE_IGGY_PASSWORD"}
+    env = {key: value for key, value in os.environ.items() if not key.startswith("FROSTLINE_") or key in allowed}
+    tcp, http, health = port(), port(), port()
+    env.update(FROSTLINE_STACK_DIR=str(directory / "stack"),
+               FROSTLINE_TCP_PORT=str(tcp), FROSTLINE_HTTP_PORT=str(http),
+               FROSTLINE_HEALTH_PORT=str(health),
+               FROSTLINE_DURATION_SECONDS=str(duration),
+               FROSTLINE_RATE_PER_SECOND=str(args.rate),
+               FROSTLINE_SAMPLED_EVENTS_PER_ROLE_PER_SECOND="0",
+               FROSTLINE_OUTPUT_DIRECTORY=str(directory / "application"),
+               FROSTLINE_LOCAL_GUARD="false", FROSTLINE_WORKERS_PER_ROLE=str(args.workers))
+    username = env.get("FROSTLINE_IGGY_USERNAME", "iggy")
+    password = env.get("FROSTLINE_IGGY_PASSWORD", "laser")
+    env["LASER_CONNECTION_STRING"] = f"{username}:{password}@127.0.0.1:{tcp}?nodelay=true"
+    runner = ROOT / "scripts/stack-local"
+    child = None
+    socket_directory = tempfile.TemporaryDirectory(prefix="frostline-socket-")
+    env["FROSTLINE_PLANE_SOCKET"] = str(Path(socket_directory.name) / "plane.sock")
+    ticks = os.sysconf("SC_CLK_TCK")
+    outcome = {"profile": args.profile, "duration_seconds": duration, "rate": args.rate,
+               "workers_per_role": args.workers, "nodelay": True,
+               "clock_ticks_per_second": ticks, "soft_stop": None,
+               "binary": args.binary.name,
+               "valid": False}
+    try:
+        version_output = subprocess.run(
+            [str(args.binary.resolve()), "--version"], check=True,
+            capture_output=True, text=True, timeout=10,
+        ).stdout
+        binary_version = next((word for word in version_output.split() if word[0].isdigit()), None)
+        if binary_version is None:
+            raise ValueError("the application did not report a release version")
+        outcome["binary_version"] = binary_version.split("+", 1)[0]
+        with (directory / "startup.log").open("w") as startup:
+            subprocess.run([str(runner), "start"], cwd=ROOT, env=env,
+                           stdout=startup, stderr=subprocess.STDOUT, check=True, timeout=100)
+        pids = json.loads((directory / "stack/pids.json").read_text())
+        with (directory / "application.log").open("w") as log:
+            child = subprocess.Popen([str(args.binary.resolve()), "live"], cwd=ROOT,
+                                     env=env, stdout=log, stderr=subprocess.STDOUT)
+        pids["application"] = child.pid
+        initial = {name: sample(pid) for name, pid in pids.items() if name != "application"}
+        if args.profile == "pressure" and args.soft_bytes is None:
+            if initial["iggy"].get("cgroup_max_bytes") is None:
+                raise RuntimeError("pressure requires a real cgroup limit or explicit --soft-bytes")
+        outcome["initial"] = initial
+        started = time.monotonic()
+        peaks, cpu_last = {}, {}
+        with (directory / "samples.jsonl").open("w") as samples:
+            while child.poll() is None:
+                elapsed = time.monotonic() - started
+                row = {"elapsed_seconds": elapsed, "processes": {}}
+                for name, pid in pids.items():
+                    try:
+                        value = sample(pid)
+                    except FileNotFoundError:
+                        if name != "application":
+                            raise RuntimeError(f"{name} exited during the trial")
+                        continue
+                    row["processes"][name] = value
+                    peaks[name] = max(peaks.get(name, 0), value["rss_bytes"])
+                    cpu_last[name] = value["cpu_ticks"]
+                    if args.profile == "pressure" and name == "iggy" and outcome["soft_stop"] is None:
+                        hard = value.get("cgroup_max_bytes")
+                        threshold = args.soft_bytes or int(hard * args.soft_percent / 100)
+                        current = value.get("cgroup_current_bytes", value["rss_bytes"]) if hard else value["rss_bytes"]
+                        if current >= threshold:
+                            outcome["soft_stop"] = {"elapsed_seconds": elapsed, "bytes": current,
+                                                    "threshold_bytes": threshold}
+                            child.send_signal(signal.SIGINT)
+                samples.write(json.dumps(row) + "\n")
+                samples.flush()
+                if elapsed > duration + 120:
+                    raise TimeoutError("the application did not drain within its deadline")
+                time.sleep(1)
+        outcome["elapsed_seconds"] = time.monotonic() - started
+        if args.profile != "pressure" and outcome["elapsed_seconds"] < duration:
+            raise RuntimeError("the soak ended before its configured duration")
+        outcome["exit_code"] = child.returncode
+        outcome["observed_peak_rss_bytes"] = peaks
+        outcome["cpu_seconds"] = {
+            name: (value - initial.get(name, {}).get("cpu_ticks", 0)) / ticks
+            for name, value in cpu_last.items()
+        }
+        report = json.loads((directory / "application/report.json").read_text())
+        outcome["application_report"] = report
+        outcome["valid"] = child.returncode == 0 and report["complete"] and report["expired_windows"] == 0
+        for name, before in initial.items():
+            after = sample(pids[name])
+            if after.get("cgroup_events", {}).get("oom_kill", 0) > before.get("cgroup_events", {}).get("oom_kill", 0):
+                outcome["valid"] = False
+                outcome["oom"] = True
+        if args.profile == "pressure" and outcome["soft_stop"] is None:
+            outcome["valid"] = False
+            raise RuntimeError("the pressure trial did not reach its soft threshold")
+        if not outcome["valid"]:
+            raise RuntimeError("the trial did not complete cleanly")
+    except Exception as error:
+        outcome["valid"] = False
+        outcome["error"] = str(error)
+    finally:
+        if child is not None and child.poll() is None:
+            child.send_signal(signal.SIGINT)
+            try:
+                child.wait(40)
+            except subprocess.TimeoutExpired:
+                child.kill()
+                child.wait()
+        try:
+            subprocess.run([str(runner), "stop"], cwd=ROOT, env=env, capture_output=True, timeout=40, check=True)
+        except Exception as error:
+            outcome["valid"] = False
+            outcome["cleanup_error"] = str(error)
+        finally:
+            socket_directory.cleanup()
+        (directory / "result.json").write_text(json.dumps(outcome, indent=2) + "\n")
+    print(json.dumps({"valid": outcome["valid"], "result": str(directory / "result.json")}), flush=True)
+    raise SystemExit(0 if outcome["valid"] else 1)
+
+
+if __name__ == "__main__":
+    main()

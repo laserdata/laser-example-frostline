@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+"""Compare concurrent independent filtered and ordinary readers of identical records."""
+
+import argparse
+import importlib.machinery
+import importlib.util
+import json
+import os
+from pathlib import Path
+import signal
+import subprocess
+import tempfile
+import time
+import threading
+
+ROOT = Path(__file__).resolve().parents[1]
+loader = importlib.machinery.SourceFileLoader("streaming_trial", str(ROOT / "scripts/streaming-trial"))
+spec = importlib.util.spec_from_loader(loader.name, loader)
+streaming = importlib.util.module_from_spec(spec)
+loader.exec_module(streaming)
+
+
+def outcome(text):
+    return json.loads(next(line for line in reversed(text.splitlines()) if line.startswith("{")))
+
+
+def phase(binary, env, directory, pids, stream, mode, readers, repetition, case):
+    children = []
+    logs = []
+    before = streaming.sample(pids["iggy"])
+    peak = before["rss_bytes"]
+    pss = before.get("pss_bytes", 0)
+    started = time.monotonic()
+    try:
+        for worker in range(readers):
+            base = directory / f"{repetition}-{mode}-{worker}"
+            log = base.with_suffix(".log").open("w")
+            logs.append(log)
+            resources = base.with_suffix(".resources")
+            command = ["/usr/bin/time", "-f", "%U %S %M", "-o", str(resources),
+                       str(binary), "read-selectivity", stream, mode, case["name"], f"{repetition}-{worker}"]
+            children.append((subprocess.Popen(command, cwd=ROOT, env=env, stdout=log,
+                             stderr=subprocess.STDOUT, start_new_session=True), base, resources))
+        stopped = threading.Event()
+        sampling_errors = []
+        def collect_memory():
+            nonlocal peak, pss
+            try:
+                with (directory / f"{repetition}-{mode}-samples.jsonl").open("w") as samples:
+                    while not stopped.is_set():
+                        sample = streaming.sample(pids["iggy"])
+                        peak = max(peak, sample["rss_bytes"])
+                        pss = max(pss, sample.get("pss_bytes", 0))
+                        samples.write(json.dumps({"elapsed_seconds": time.monotonic() - started, **sample}) + "\n")
+                        stopped.wait(0.05)
+            except Exception as error:
+                sampling_errors.append(error)
+        sampler = threading.Thread(target=collect_memory, daemon=True)
+        sampler.start()
+        try:
+            for child, _, _ in children:
+                child.wait(timeout=max(0.001, 300 - (time.monotonic() - started)))
+            wall_seconds = time.monotonic() - started
+        finally:
+            stopped.set()
+            sampler.join()
+        if sampling_errors:
+            raise sampling_errors[0]
+        after = streaming.sample(pids["iggy"])
+        values = []
+        expected_matches = (case["records"] + 1000 // case["per_mille"] - 1) // (1000 // case["per_mille"])
+        for child, base, resources in children:
+            if child.returncode != 0:
+                raise RuntimeError(f"reader failed, see {base.with_suffix('.log')}")
+            value = outcome(base.with_suffix(".log").read_text())
+            expected_count = expected_matches if mode == "filtered" else case["records"]
+            expected_bytes = expected_matches * case["matched_bytes"]
+            if mode != "filtered":
+                expected_bytes += (case["records"] - expected_matches) * case["other_bytes"]
+            if value["matched"] != expected_matches or value["received_records"] != expected_count or value["received_payload_bytes"] != expected_bytes:
+                raise RuntimeError("a fanout reader delivered unexpected records or bytes")
+            user, system, rss = map(float, resources.read_text().split())
+            values.append({"delivery": value, "cpu_seconds": user + system, "peak_rss_bytes": int(rss * 1024)})
+        return {"readers": values, "wall_seconds": wall_seconds,
+                "server_cpu_seconds": (after["cpu_ticks"] - before["cpu_ticks"]) / os.sysconf("SC_CLK_TCK"),
+                "server_peak_rss_bytes": peak, "server_peak_pss_bytes": pss,
+                "server_before": before, "server_after": after}
+    finally:
+        for child, _, _ in children:
+            if child.poll() is None:
+                os.killpg(child.pid, signal.SIGTERM)
+                try:
+                    child.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    os.killpg(child.pid, signal.SIGKILL)
+                    child.wait()
+        for log in logs:
+            log.close()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--repetitions", type=int, default=3)
+    args = parser.parse_args()
+    if not 1 <= args.repetitions <= 10:
+        parser.error("repetitions must be 1 through 10")
+    directory = args.out.resolve()
+    directory.mkdir(parents=True, exist_ok=False)
+    binary = ROOT / "target/release/frostline-bench"
+    allowed = {"FROSTLINE_IGGY_SERVER", "FROSTLINE_PLANE", "FROSTLINE_IGGY_USERNAME", "FROSTLINE_IGGY_PASSWORD"}
+    env = {key: value for key, value in os.environ.items() if not key.startswith("FROSTLINE_") or key in allowed}
+    tcp, http, health = streaming.port(), streaming.port(), streaming.port()
+    env.update(FROSTLINE_STACK_DIR=str(directory / "stack"), FROSTLINE_TCP_PORT=str(tcp),
+               FROSTLINE_HTTP_PORT=str(http), FROSTLINE_HEALTH_PORT=str(health),
+               FROSTLINE_SCAN_RECORDS="1000", FROSTLINE_ROUND_RECORDS="1000")
+    env["LASER_CONNECTION_STRING"] = f"{env.get('FROSTLINE_IGGY_USERNAME', 'iggy')}:{env.get('FROSTLINE_IGGY_PASSWORD', 'laser')}@127.0.0.1:{tcp}?nodelay=true"
+    stream = "frostline-fanout"
+    result = {"valid": False, "rows": [], "profile": "payload_1k", "nodelay": True}
+    runner = ROOT / "scripts/stack-local"
+    with tempfile.TemporaryDirectory(prefix="frostline-fanout-") as sockets:
+        env["FROSTLINE_PLANE_SOCKET"] = str(Path(sockets) / "plane.sock")
+        try:
+            with (directory / "startup.log").open("w") as log:
+                subprocess.run([str(runner), "start"], cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=100, check=True)
+            pids = json.loads((directory / "stack/pids.json").read_text())
+            prepared = subprocess.run([str(binary), "prepare-selectivity", stream, "payload_1k"], cwd=ROOT,
+                                      env=env, capture_output=True, text=True, timeout=120, check=True)
+            (directory / "publish.log").write_text(prepared.stdout + prepared.stderr)
+            case = outcome(prepared.stdout)
+            result["dataset"] = case
+            for readers in [1, 3, 8]:
+                group = directory / f"fanout-{readers}"
+                group.mkdir()
+                for repetition in range(1, args.repetitions + 1):
+                    filtered = phase(binary, env, group, pids, stream, "filtered", readers, repetition, case)
+                    raw = phase(binary, env, group, pids, stream, "full-feed", readers, repetition, case)
+                    result["rows"].append({"readers": readers, "repetition": repetition, "filtered": filtered, "raw": raw})
+                    (directory / "result.json").write_text(json.dumps(result, indent=2) + "\n")
+                    print(json.dumps({"readers": readers, "repetition": repetition, "status": "passed"}), flush=True)
+            result["valid"] = True
+        except Exception as error:
+            result["error"] = str(error)
+        finally:
+            try:
+                subprocess.run([str(runner), "stop"], cwd=ROOT, env=env, capture_output=True, timeout=40, check=True)
+            except Exception as error:
+                result["valid"] = False
+                result["cleanup_error"] = str(error)
+            (directory / "result.json").write_text(json.dumps(result, indent=2) + "\n")
+    raise SystemExit(0 if result["valid"] else 1)
+
+
+if __name__ == "__main__":
+    main()

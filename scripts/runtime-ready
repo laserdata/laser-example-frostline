@@ -1,0 +1,54 @@
+#!/usr/bin/env python3
+"""Drive backend capability negotiation, then require plane readiness."""
+
+import json
+import os
+import sys
+import urllib.request
+
+
+def request(url, body=None, token=None, method=None, raw=False):
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = "Bearer " + token
+    data = None if body is None else json.dumps(body).encode()
+    with urllib.request.urlopen(urllib.request.Request(url, data=data, headers=headers, method=method), timeout=2) as response:
+        payload = response.read()
+        return payload.decode() if raw else json.loads(payload) if payload else None
+
+
+def main():
+    http, readiness = sys.argv[1:]
+    token = None
+    try:
+        login = request(http + "/users/login", {
+            "username": os.environ["FROSTLINE_IGGY_USERNAME"],
+            "password": os.environ["FROSTLINE_IGGY_PASSWORD"],
+        })
+        access = login.get("access_token", login.get("token"))
+        token = access.get("token") if isinstance(access, dict) else access
+        if not isinstance(token, str):
+            return 1
+        capabilities = request(http + "/agdx/capabilities", token=token)
+        if not capabilities.get("managed"):
+            return 1
+        metrics = request(http + "/agdx/filters/metrics", token=token, raw=True)
+        cap = next((int(line.split()[1]) for line in metrics.splitlines()
+                    if line.startswith("agdx_filter_max_round_records ")), None)
+        expected = int(os.environ.get("FROSTLINE_ROUND_RECORDS", "1000"))
+        if cap is not None and cap != expected or cap is None and expected != 1000:
+            print(f"owner-read cap mismatch: requested {expected}, observed {cap}", flush=True)
+            return 1
+        return 0 if request(readiness).get("ready") else 1
+    except Exception:
+        return 1
+    finally:
+        if token:
+            try:
+                request(http + "/users/logout", token=token, method="DELETE")
+            except Exception:
+                pass
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
