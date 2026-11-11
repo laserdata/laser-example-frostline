@@ -18,8 +18,8 @@ frostline-consumers = { path = "crates/consumers" }
 frostline-demo = { path = "crates/demo" }
 frostline-producer = { path = "crates/producer" }
 frostline-shared = { path = "crates/shared" }
-laser-sdk = { version = "0.8.1", features = ["filters", "schema-codecs"] }
-prost = { version = "0.14.4" }
+laser-sdk = { version = "0.9.1", features = ["filters", "schema-codecs"] }
+prost = { version = "0.14.5" }
 protox = { version = "0.10.0" }
 rand = { version = "0.10", features = ["chacha"] }
 secrecy = { version = "0.10.3" }
@@ -29,7 +29,7 @@ sha2 = { version = "0.11.1" }
 strum = { version = "0.28.0", features = ["derive"] }
 tempfile = { version = "3.27.0" }
 thiserror = { version = "2.0.21" }
-tokio = { version = "1.53.3", features = ["fs", "io-std", "io-util", "macros", "process", "rt", "rt-multi-thread", "signal", "sync", "time"] }
+tokio = { version = "1.54.1", features = ["fs", "io-std", "io-util", "macros", "process", "rt", "rt-multi-thread", "signal", "sync", "time"] }
 tracing = { version = "0.1.44" }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 

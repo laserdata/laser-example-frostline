@@ -62,7 +62,7 @@ async fn given_mixed_records_when_read_with_the_maintenance_filter_then_should_d
         .consumer_group("filtered");
     group
         .create()
-        .filter(filter)
+        .filter("filtered", filter)
         .build()
         .await
         .expect("configured group");

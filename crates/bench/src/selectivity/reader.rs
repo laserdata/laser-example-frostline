@@ -21,11 +21,16 @@ pub async fn read(
     let mut latency = Latency::default();
     let mut cycle = Latency::default();
     if filtered {
+        let group_name = format!("bench-filtered-{identity}");
         let group = laser
             .stream(stream)
             .topic(TOPIC)
-            .consumer_group(format!("bench-filtered-{identity}"));
-        let configured = group.create().filter(case.filter()).build().await?;
+            .consumer_group(group_name.as_str());
+        let configured = group
+            .create()
+            .filter(group_name.as_str(), case.filter())
+            .build()
+            .await?;
         let binding = configured.filter.expect("requested benchmark policy");
         let mut reader = group
             .reader()?
