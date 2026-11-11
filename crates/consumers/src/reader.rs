@@ -16,7 +16,6 @@ pub async fn drive(
     let result = async {
         progress.restore_finished().await?;
         while !progress.finished() {
-            let connections = reader.data_connections_opened();
             let started = Instant::now();
             let (page, more) = tokio::select! {
                 () = shutdown.cancelled() => break,
@@ -24,11 +23,6 @@ pub async fn drive(
             };
             let elapsed = started.elapsed();
             progress.latency.record(elapsed, reader.examined_in_round());
-            if reader.data_connections_opened() > connections {
-                progress
-                    .connection_opening_latency
-                    .record(elapsed, reader.examined_in_round());
-            }
             let Some(page) = page else {
                 if more {
                     continue;

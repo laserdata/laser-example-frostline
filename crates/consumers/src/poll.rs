@@ -1,11 +1,16 @@
 use crate::ConsumerError;
 use laser_sdk::iggy::prelude::{
     Consumer as NativeConsumer, ConsumerGroupClient, ConsumerOffsetClient, Identifier, IggyClient,
-    MessageClient, PolledMessages, PollingStrategy,
+    MessageClient, PollOptions, PolledMessages, PollingStrategy,
 };
-use laser_sdk::prelude::Laser;
+use laser_sdk::prelude::{Laser, LaserError};
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::time::Duration;
+use tokio::time::{sleep, timeout};
+
+const ASSIGNMENT_TIMEOUT: Duration = Duration::from_secs(15);
+const ASSIGNMENT_POLL: Duration = Duration::from_millis(50);
 
 /// One ordinary native poll per call, with explicit local offsets and no prefetch timing guess.
 pub struct PollReader {
@@ -45,9 +50,26 @@ impl PollReader {
         let group = Identifier::named(group)?;
         let client = laser.client();
         client.join_consumer_group(&stream, &topic, &group).await?;
+        // The server installs a joined member's partitions later, and group polls need the synced generation.
+        let assignment = timeout(ASSIGNMENT_TIMEOUT, async {
+            loop {
+                let assignment = client
+                    .sync_consumer_group(&stream, &topic, &group)
+                    .await?
+                    .ok_or(ConsumerError::Malformed(
+                        "a consumer group without this reader as a member",
+                    ))?;
+                if assignment.partitions.iter().copied().eq(0..partitions) {
+                    return Ok::<_, ConsumerError>(assignment);
+                }
+                sleep(ASSIGNMENT_POLL).await;
+            }
+        })
+        .await
+        .map_err(|_| LaserError::Timeout("every partition in the full-feed group assignment"))??;
         let consumer = NativeConsumer::group(group.clone());
         let mut offsets = BTreeMap::new();
-        for partition in 0..partitions {
+        for partition in assignment.partitions {
             let offset = match start {
                 PollStart::First => 0,
                 PollStart::Stored => client
@@ -92,11 +114,13 @@ impl PollReader {
             .poll_messages(
                 &self.stream,
                 &self.topic,
-                Some(partition),
+                partition,
                 &self.consumer,
                 &PollingStrategy::offset(offset),
-                self.count,
-                false,
+                PollOptions {
+                    count: self.count,
+                    ..PollOptions::default()
+                },
             )
             .await?;
         if let Some(last) = polled.messages.last() {

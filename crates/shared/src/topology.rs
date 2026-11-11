@@ -1,7 +1,7 @@
 use crate::names::{RunId, RunTopic};
 use laser_sdk::iggy::prelude::{
-    CompressionAlgorithm, Identifier, IggyExpiry, MaxTopicSize, StreamClient, TopicClient,
-    TopicCreateOptions,
+    CompressionAlgorithm, Identifier, IggyExpiry, MaxTopicSize, StreamClient, StreamCreateOptions,
+    TopicClient, TopicCreateOptions,
 };
 use laser_sdk::prelude::{Laser, LaserError};
 use serde::{Deserialize, Serialize};
@@ -62,7 +62,7 @@ pub async fn ensure_run(
         .is_none()
     {
         client
-            .create_stream(&stream)
+            .create_stream(&stream, &StreamCreateOptions::default())
             .await
             .map_err(LaserError::from)?;
     }
@@ -125,11 +125,12 @@ pub async fn verify_retention(
                 topic: name.clone(),
             })?;
         let requested = expiry(keep);
-        if details.message_expiry != requested {
+        let actual = details.resolved_options().message_expiry;
+        if actual != requested {
             return Err(TopologyError::Retention {
                 topic: name,
                 requested,
-                actual: details.message_expiry,
+                actual,
             });
         }
     }

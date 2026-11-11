@@ -13,7 +13,7 @@ Every Laser SDK surface Frostline uses, where it is used, and the test that runs
 | `ConsumerFilter::with_mismatch_policy(RecordPolicy::Pass)`, foreign records skipped by default | `demo/src/mixed.rs` | same |
 | `group.filter().preview(..).explain(true)` | `demo/src/mixed.rs` | same |
 | `group.filter().test` | `demo/src/provision.rs` | every demo run and the end to end tests |
-| `topic.consumer_group(name).create().filter(definition).build()` | `provision.rs`, `walkthrough.rs` | the managed story |
+| `topic.consumer_group(name).create().filter(name, definition).build()` | `provision.rs`, `walkthrough.rs` | the managed story |
 | `group.filter().preview` | `walkthrough.rs` | same |
 | `group.filter().set_revision_enabled`, `FilterErrorReason::RevisionDisabled` | `walkthrough.rs` | the pause and resume steps of the managed story |
 | Administrative `FilterMutation::Unbind` and `Drop` with stable operation ids | `demo/src/cleanup.rs` | every finite run ends with them |
@@ -26,7 +26,6 @@ Every Laser SDK surface Frostline uses, where it is used, and the test that runs
 | `reader().partition(id)` | `consumers/src/lib.rs` | the multiworker story assigns independent worker groups their partition subsets |
 | `read_round`, `examined_in_round`, `ack_through`, `close` | `consumers/src/reader.rs` | receipts match the producer manifests in every test |
 | `next_record`, `try_next_page`, `ack`, `close` | `demo/src/walkthrough.rs` | the managed story |
-| `data_connections_opened` | `consumers/src/reader.rs`, read every round | the connection-opening latency series in each receipt |
 
 ## Ordinary streaming
 
@@ -34,7 +33,7 @@ Every Laser SDK surface Frostline uses, where it is used, and the test that runs
 | --- | --- | --- |
 | `stream().topic().producer()` with `batch_length` | `producer/src/lib.rs`, `shared/src/reports.rs` | `producer/tests/integration.rs` |
 | `consumer(name, partition)`, `start_at(ConsumerStart::First)`, `commit_policy(CommitPolicy::Disabled)`, `allow_replay`, `next_within`, `shutdown` | `shared/src/reports.rs` | the receipt reader of every report |
-| native `ensure_consumer_group`, `join_consumer_group`, `poll_messages`, `store_consumer_offset`, `leave_consumer_group` | `consumers/src/poll.rs` | the compare story, where each full-feed reader receives the whole feed |
+| native `ensure_consumer_group`, `join_consumer_group`, `sync_consumer_group`, `poll_messages`, `store_consumer_offset`, `leave_consumer_group` | `consumers/src/poll.rs` | the compare story, where each full-feed reader receives the whole feed |
 
 ## Schemas and codecs
 

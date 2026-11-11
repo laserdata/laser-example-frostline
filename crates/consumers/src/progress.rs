@@ -26,7 +26,6 @@ pub struct Progress {
     pub summary: ConsumerSummary,
     pub closed: BTreeSet<u32>,
     pub latency: Latency,
-    pub connection_opening_latency: Latency,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -97,7 +96,6 @@ impl Progress {
     pub fn into_summary(mut self) -> ConsumerSummary {
         self.summary.status = self.handler.status();
         self.summary.fetch_latency = self.latency.summary();
-        self.summary.connection_opening_latency = self.connection_opening_latency.summary();
         self.summary
     }
 }

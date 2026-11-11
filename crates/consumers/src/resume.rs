@@ -5,7 +5,7 @@ use frostline_shared::names::Frame;
 use frostline_shared::names::RunTopic;
 use frostline_shared::runfile::RunFile;
 use laser_sdk::iggy::prelude::{
-    Consumer, ConsumerOffsetClient, Identifier, MessageClient, PollingStrategy,
+    Consumer, ConsumerOffsetClient, Identifier, MessageClient, PollOptions, PollingStrategy,
 };
 use laser_sdk::prelude::Laser;
 
@@ -91,11 +91,13 @@ impl Progress {
             .poll_messages(
                 &Identifier::named(&self.resume.stream)?,
                 &Identifier::named(&RunTopic::Changes.to_string())?,
-                Some(partition),
+                partition,
                 &Consumer::new(Identifier::named("frostline-resume-check")?),
                 &PollingStrategy::offset(offset),
-                1,
-                false,
+                PollOptions {
+                    count: 1,
+                    ..PollOptions::default()
+                },
             )
             .await?;
         if let Some(message) = messages

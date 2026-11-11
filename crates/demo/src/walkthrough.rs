@@ -48,10 +48,12 @@ pub async fn pause_and_resume(
     let topic = laser
         .stream(run_file.run_id.stream())
         .topic(RunTopic::Changes.to_string());
-    let group = topic.consumer_group(format!("{SAFETY_CURRENT_GROUP}-replay"));
+    let replay = format!("{SAFETY_CURRENT_GROUP}-replay");
+    let group = topic.consumer_group(replay.as_str());
     group
         .create()
         .filter(
+            replay.as_str(),
             frostline_shared::policy::by_group()
                 .into_iter()
                 .find(|(name, _)| *name == SAFETY_CURRENT_GROUP)

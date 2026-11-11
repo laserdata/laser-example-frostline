@@ -130,7 +130,7 @@ async fn bind(
         .consumer_group(group);
     let configured = handle
         .create()
-        .filter(policy.filter(run_file.codec, &run_file.schema_ids))
+        .filter(group, policy.filter(run_file.codec, &run_file.schema_ids))
         .build()
         .await?;
     let binding = configured.filter.ok_or_else(|| {

@@ -7,7 +7,7 @@ use frostline_shared::topology::{self, Retention};
 use frostline_shared::{LaserFactory, ServiceHandle, Settings};
 use laser_sdk::iggy::prelude::{
     Consumer, ConsumerOffsetClient, GlobalPermissions, Identifier, Permissions, StreamPermissions,
-    TopicClient, TopicPermissions, UserClient, UserStatus,
+    TopicClient, TopicPermissions, UserClient, UserCreateOptions, UserStatus,
 };
 use laser_sdk::prelude::Laser;
 use std::collections::BTreeMap;
@@ -58,7 +58,7 @@ pub async fn provisioned_run(factory: &LaserFactory, settings: &Settings) -> (La
             .topic(RunTopic::Changes.to_string())
             .consumer_group(name)
             .create()
-            .filter(policy.filter(run_file.codec, &run_file.schema_ids))
+            .filter(name, policy.filter(run_file.codec, &run_file.schema_ids))
             .build()
             .await
             .expect("group policy is configured");
@@ -123,6 +123,7 @@ pub async fn grant_read_only(laser: &Laser, run_file: &RunFile) {
             READER_PASSWORD,
             UserStatus::Active,
             Some(permissions),
+            &UserCreateOptions::default(),
         )
         .await
         .expect("the read-only user is created");

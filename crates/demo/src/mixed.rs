@@ -6,8 +6,8 @@ use frostline_shared::names::Role;
 use frostline_shared::output::act;
 use frostline_shared::policy::RolePolicy;
 use laser_sdk::filters::{
-    ConsumerFilter, FaultPolicy, FaultReason, FilterExpr, FilteredStart, RecordPolicy, TextMatch,
-    Verdict,
+    ConsumerFilter, FaultPolicy, FaultReason, FilterExpr, FilteredStart, RecordEvaluation,
+    RecordPolicy, TextMatch, Verdict,
 };
 use laser_sdk::iggy::prelude::{HeaderKey, HeaderValue, IggyError};
 use laser_sdk::prelude::{Laser, ProducerMessage, Routing};
@@ -53,11 +53,16 @@ pub async fn mixed_log(
     let mut verdicts = Vec::new();
     let mut lines = Vec::new();
     for (index, (name, filter)) in filters().into_iter().enumerate() {
+        let group_name = format!("mixed-{index}");
         let group = laser
             .stream(&stream)
             .topic(MIXED_TOPIC)
-            .consumer_group(format!("mixed-{index}"));
-        let configured = group.create().filter(filter.clone()).build().await?;
+            .consumer_group(group_name.as_str());
+        let configured = group
+            .create()
+            .filter(group_name.as_str(), filter.clone())
+            .build()
+            .await?;
         let binding = configured.filter.expect("requested policy");
         let preview = group
             .filter()
@@ -109,11 +114,21 @@ pub async fn mixed_log(
         let mut reader = group.reader()?.start(FilteredStart::First).build().await?;
         let mut unevaluated = Vec::new();
         let read = async {
-            while let Some(page) = reader.try_next_page().await? {
+            loop {
+                // An idle round drains the log only once the group assigned the reader its partitions.
+                let Some(page) = reader.try_next_page().await? else {
+                    if reader.partitions().is_empty() {
+                        reader.wait_for_records().await;
+                        continue;
+                    }
+                    break;
+                };
                 unevaluated.extend(
                     page.records
                         .iter()
-                        .filter(|record| !record.evaluated)
+                        .filter(|record| {
+                            matches!(record.evaluation, RecordEvaluation::Unevaluated(_))
+                        })
                         .map(|record| record.offset),
                 );
                 reader.ack_page(&page).await?;

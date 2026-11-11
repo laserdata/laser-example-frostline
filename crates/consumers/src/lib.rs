@@ -59,8 +59,6 @@ pub struct ConsumerSummary {
     pub received_bytes: u64,
     pub duplicates: u64,
     pub fetch_latency: LatencySummary,
-    #[serde(default)]
-    pub connection_opening_latency: LatencySummary,
     pub status: String,
 }
 
@@ -161,7 +159,6 @@ pub async fn run(
         finite: settings.mode != Mode::Live,
         summary: ConsumerSummary::default(),
         latency: Latency::default(),
-        connection_opening_latency: Latency::default(),
         closed: BTreeSet::new(),
         policy,
     };
